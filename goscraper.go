@@ -216,10 +216,10 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 					continue
 				}
 				if cleanStr(attr.Key) == "href" {
-					l.Href = cleanStr(attr.Val)
+					l.Href = strings.TrimSpace(attr.Val)
 				}
 				if cleanStr(attr.Key) == "rel" {
-					l.Rel = cleanStr(attr.Val)
+					l.Rel = strings.TrimSpace(attr.Val)
 				}
 			}
 
@@ -252,10 +252,10 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 					continue
 				}
 				if cleanStr(attr.Key) == "type" {
-					s.Type = cleanStr(attr.Val)
+					s.Type = strings.TrimSpace(attr.Val)
 				}
 				if cleanStr(attr.Key) == "src" {
-					s.Src = cleanStr(attr.Val)
+					s.Src = strings.TrimSpace(attr.Val)
 				}
 			}
 
@@ -414,6 +414,7 @@ func metaFragment(token html.Token) bool {
 func cleanStr(str string) string {
 	return strings.ToLower(strings.TrimSpace(str))
 }
+
 func (scraper *Scraper) convertFullUrl(u string) string {
 	urlParse, err := url.Parse(u)
 	if err != nil {
