@@ -21,6 +21,8 @@ func main() {
 	fmt.Printf("Url :\t %s\n", s.Preview.Link)
 
 	fmt.Printf("Headers :\t %v\n", s.Headers)
+	fmt.Printf("Status :\t %v\n", s.Response.Status)
+	fmt.Printf("Proto :\t %v\n", s.Response.Proto)
 
 	//fmt.Printf("Body :\n %s\n", s.Body)
 

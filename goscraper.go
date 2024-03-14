@@ -27,10 +27,11 @@ type Scraper struct {
 }
 
 type Document struct {
-	Body    []byte
-	Headers map[string][]string
-	buff    bytes.Buffer
-	Preview DocumentPreview
+	Body     []byte
+	Response *http.Response
+	Headers  map[string][]string
+	buff     bytes.Buffer
+	Preview  DocumentPreview
 }
 
 type DocumentPreview struct {
@@ -148,9 +149,10 @@ func (scraper *Scraper) getDocument() (*Document, error) {
 		return nil, err
 	}
 	doc := &Document{
-		buff:    b,
-		Headers: resp.Header,
-		Body:    b.Bytes(),
+		buff:     b,
+		Headers:  resp.Header,
+		Body:     b.Bytes(),
+		Response: resp,
 		Preview: DocumentPreview{
 			jsFileMap:  make(map[string]*struct{}),
 			cssFileMap: make(map[string]*struct{}),
