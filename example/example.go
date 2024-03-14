@@ -20,4 +20,8 @@ func main() {
 	fmt.Printf("JsFiles:\t %v\n", s.Preview.JsFiles)
 	fmt.Printf("Url :\t %s\n", s.Preview.Link)
 
+	fmt.Printf("Headers :\t %v\n", s.Headers)
+
+	//fmt.Printf("Body :\n %s\n", s.Body)
+
 }

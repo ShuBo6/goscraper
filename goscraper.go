@@ -27,7 +27,9 @@ type Scraper struct {
 }
 
 type Document struct {
-	Body    bytes.Buffer
+	Body    []byte
+	Headers map[string][]string
+	buff    bytes.Buffer
 	Preview DocumentPreview
 }
 
@@ -145,11 +147,15 @@ func (scraper *Scraper) getDocument() (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc := &Document{Body: b, Preview: DocumentPreview{
-		jsFileMap:  make(map[string]*struct{}),
-		cssFileMap: make(map[string]*struct{}),
-		Link:       scraper.Url.String(),
-	}}
+	doc := &Document{
+		buff:    b,
+		Headers: resp.Header,
+		Body:    b.Bytes(),
+		Preview: DocumentPreview{
+			jsFileMap:  make(map[string]*struct{}),
+			cssFileMap: make(map[string]*struct{}),
+			Link:       scraper.Url.String(),
+		}}
 
 	return doc, nil
 }
@@ -177,7 +183,7 @@ type scriptHtmlNode struct {
 }
 
 func (scraper *Scraper) parseDocument(doc *Document) error {
-	t := html.NewTokenizer(&doc.Body)
+	t := html.NewTokenizer(&doc.buff)
 	var ogImage bool
 	var headPassed bool
 	var hasFragment bool
@@ -299,18 +305,18 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 				doc.Preview.Link = content
 			case "og:image":
 				ogImage = true
-				ogImgUrl, err := url.Parse(content)
-				if err != nil {
-					return err
-				}
-				if !ogImgUrl.IsAbs() {
-					ogImgUrl, err = url.Parse(fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, ogImgUrl.Path))
-					if err != nil {
-						return err
-					}
-				}
+				//ogImgUrl, err := url.Parse(content)
+				//if err != nil {
+				//	return err
+				//}
+				//if !ogImgUrl.IsAbs() {
+				//	ogImgUrl, err = url.Parse(fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, ogImgUrl.Path))
+				//	if err != nil {
+				//		return err
+				//	}
+				//}
 
-				doc.Preview.Images = []string{ogImgUrl.String()}
+				doc.Preview.Images = append(doc.Preview.Images, scraper.convertFullUrl(content))
 
 			}
 
@@ -326,15 +332,16 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 		case "img":
 			for _, attr := range token.Attr {
 				if cleanStr(attr.Key) == "src" {
-					imgUrl, err := url.Parse(attr.Val)
-					if err != nil {
-						return err
-					}
-					if !imgUrl.IsAbs() {
-						doc.Preview.Images = append(doc.Preview.Images, fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, imgUrl.Path))
-					} else {
-						doc.Preview.Images = append(doc.Preview.Images, attr.Val)
-					}
+					doc.Preview.Images = append(doc.Preview.Images, scraper.convertFullUrl(strings.TrimSpace(attr.Val)))
+					//imgUrl, err := url.Parse(attr.Val)
+					//if err != nil {
+					//	return err
+					//}
+					//if !imgUrl.IsAbs() {
+					//	doc.Preview.Images = append(doc.Preview.Images, fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, imgUrl.Path))
+					//} else {
+					//	doc.Preview.Images = append(doc.Preview.Images, attr.Val)
+					//}
 
 				}
 			}
@@ -342,11 +349,11 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 
 		if hasCanonical && headPassed && scraper.MaxRedirect > 0 {
 			if !canonicalUrl.IsAbs() {
-				absCanonical, err := url.Parse(fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, canonicalUrl.Path))
-				if err != nil {
-					return err
-				}
-				canonicalUrl = absCanonical
+				//absCanonical, err :=      url.Parse(fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, canonicalUrl.Path))
+				//if err != nil {
+				//	return err
+				//}
+				canonicalUrl = scraper.Url.JoinPath(canonicalUrl.Path)
 			}
 			scraper.Url = canonicalUrl
 			scraper.EscapedFragmentUrl = nil
@@ -418,7 +425,8 @@ func cleanStr(str string) string {
 func (scraper *Scraper) convertFullUrl(u string) string {
 	urlParse, err := url.Parse(u)
 	if err != nil {
-		log.Panic(err)
+		log.Println("[convertFullUrl]", err)
+		return ""
 	}
 	if !urlParse.IsAbs() {
 		return scraper.Url.JoinPath(u).String()
