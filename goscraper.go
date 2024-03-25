@@ -431,7 +431,7 @@ func (scraper *Scraper) convertFullUrl(u string) string {
 		return ""
 	}
 	if !urlParse.IsAbs() {
-		return scraper.Url.JoinPath(u).String()
+		return fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, u)
 	}
 	return u
 }
