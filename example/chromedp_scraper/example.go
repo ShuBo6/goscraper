@@ -3,11 +3,15 @@ package main
 import (
 	"fmt"
 	"github.com/ShuBo6/goscraper"
+	"golang.org/x/net/context"
 	"log"
 )
 
 func main() {
-	s, err := goscraper.Scrape("https://shubo6.github.io/", 5)
+	ctx, cancelFunc := context.WithCancel(context.TODO())
+	defer cancelFunc()
+
+	s, err := goscraper.ChromeDPScrape("https://shubo6.github.io/", 5, ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -23,7 +27,5 @@ func main() {
 	fmt.Printf("Headers :\t %v\n", s.Headers)
 	fmt.Printf("Status :\t %v\n", s.Response.Status)
 	fmt.Printf("Proto :\t %v\n", s.Response.Proto)
-
-	//fmt.Printf("Body :\n %s\n", s.Body)
 
 }

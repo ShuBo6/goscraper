@@ -3,6 +3,8 @@ package goscraper
 import (
 	"bytes"
 	"fmt"
+	chrome_hepler "github.com/ShuBo6/goscraper/chromedp_helper"
+	"golang.org/x/net/context"
 	"io"
 	"log"
 	"net/http"
@@ -20,6 +22,12 @@ var (
 	emptyStruct            = struct{}{}
 )
 
+type ChromeDPScraper struct {
+	*Scraper
+	chromedpCtx context.Context
+	*chrome_hepler.ChromeHelper
+}
+
 type Scraper struct {
 	Url                *url.URL
 	EscapedFragmentUrl *url.URL
@@ -29,9 +37,10 @@ type Scraper struct {
 type Document struct {
 	Body     []byte
 	Response *http.Response
-	Headers  map[string][]string
-	buff     bytes.Buffer
-	Preview  DocumentPreview
+	//Headers  map[string][]string
+	Headers any
+	buff    bytes.Buffer
+	Preview DocumentPreview
 }
 
 type DocumentPreview struct {
@@ -53,6 +62,77 @@ func Scrape(uri string, maxRedirect int) (*Document, error) {
 		return nil, err
 	}
 	return (&Scraper{Url: u, MaxRedirect: maxRedirect}).Scrape()
+}
+
+func ChromeDPScrape(uri string, maxRedirect int, ctx context.Context) (*Document, error) {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return nil, err
+	}
+	return (&ChromeDPScraper{
+		Scraper:      &Scraper{Url: u, MaxRedirect: maxRedirect},
+		ChromeHelper: chrome_hepler.NewChrome(),
+		chromedpCtx:  ctx,
+	}).Scrape()
+}
+
+func (scraper *ChromeDPScraper) Scrape() (*Document, error) {
+
+	doc, err := scraper.getDocument()
+	if err != nil {
+		return nil, err
+	}
+	err = scraper.parseDocument(doc)
+	if err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+func (scraper *ChromeDPScraper) getDocument() (*Document, error) {
+	scraper.MaxRedirect -= 1
+	if strings.Contains(scraper.Url.String(), "#!") {
+		scraper.toFragmentUrl()
+	}
+	if strings.Contains(scraper.Url.String(), EscapedFragment) {
+		scraper.EscapedFragmentUrl = scraper.Url
+	}
+
+	ipPort := strings.Split(scraper.Url.Host, ":")
+	if len(ipPort) != 2 {
+		return nil, fmt.Errorf("host:%s invalid", scraper.Url.Host)
+	}
+
+	scraper.Run(scraper.chromedpCtx, scraper.Url.Scheme, ipPort[0], ipPort[1])
+	var buff bytes.Buffer
+	buff.WriteString(scraper.ChromeHelper.ResponseBody)
+	doc := &Document{
+		buff:    buff,
+		Headers: scraper.ChromeHelper.Headers,
+		Body:    []byte(scraper.ChromeHelper.ResponseBody),
+		Response: &http.Response{
+			Status:     scraper.ChromeHelper.Status,
+			StatusCode: int(scraper.ChromeHelper.StatusCode),
+			Proto:      scraper.ChromeHelper.Proto,
+			//ProtoMajor:       0,
+			//ProtoMinor:       0,
+			//Header:           nil,
+			//Body:             nil,
+			//ContentLength:    0,
+			//TransferEncoding: nil,
+			//Close:            false,
+			//Uncompressed:     false,
+			//Trailer:          nil,
+			//Request:          nil,
+			//TLS:              nil,
+		},
+		Preview: DocumentPreview{
+			jsFileMap:  make(map[string]*struct{}),
+			cssFileMap: make(map[string]*struct{}),
+			Link:       scraper.Url.String(),
+		}}
+
+	return doc, nil
 }
 
 func (scraper *Scraper) Scrape() (*Document, error) {
@@ -184,8 +264,7 @@ type scriptHtmlNode struct {
 	Src  string
 }
 
-func (scraper *Scraper) parseDocument(doc *Document) error {
-	t := html.NewTokenizer(&doc.buff)
+func parseDocument(t *html.Tokenizer, scraper *Scraper, doc *Document) error {
 	var ogImage bool
 	var headPassed bool
 	var hasFragment bool
@@ -382,8 +461,12 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 		}
 
 	}
-
 	return nil
+}
+
+func (scraper *Scraper) parseDocument(doc *Document) error {
+	t := html.NewTokenizer(&doc.buff)
+	return parseDocument(t, scraper, doc)
 }
 
 func avoidByte(b byte) bool {

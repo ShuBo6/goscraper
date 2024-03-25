@@ -8,7 +8,6 @@
 用于在特定场景下收集web信息。
 
 ---
-
 ```go
 package main
 
@@ -53,3 +52,6 @@ Headers :        map[Accept-Ranges:[bytes] Access-Control-Allow-Origin:[*] Age:[
 
 
 ```
+
+
+# 配合chromedp使用
