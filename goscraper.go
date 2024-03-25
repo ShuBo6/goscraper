@@ -2,6 +2,7 @@ package goscraper
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -131,8 +132,12 @@ func (scraper *Scraper) getDocument() (*Document, error) {
 		return nil, err
 	}
 	req.Header.Add("User-Agent", "GoScraper")
+	var httpclient = http.DefaultClient
+	if scraper.Url.Scheme == "https" {
+		httpclient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpclient.Do(req)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -190,6 +195,9 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 	var headPassed bool
 	var hasFragment bool
 	var hasCanonical bool
+	var hasHttpEquivRefresh bool
+	var httpEquivRefreshUrl string
+
 	var canonicalUrl *url.URL
 	doc.Preview.Images = []string{}
 	// saves previews' link in case that <link rel="canonical"> is found after <meta property="og:url">
@@ -288,10 +296,23 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 				if cleanStr(attr.Key) == "property" || cleanStr(attr.Key) == "name" {
 					property = attr.Val
 				}
+				if cleanStr(attr.Key) == "http-equiv" && strings.ToLower(cleanStr(attr.Val)) == "refresh" {
+					hasHttpEquivRefresh = true
+				}
 				if cleanStr(attr.Key) == "content" {
 					content = attr.Val
 				}
+
 			}
+
+			if hasHttpEquivRefresh && strings.Contains(strings.ToLower(cleanStr(content)), "url=") {
+				for _, s := range strings.Split(strings.ToLower(cleanStr(content)), ";") {
+					if strings.Contains(s, "url=") {
+						httpEquivRefreshUrl = strings.TrimPrefix(s, "url=")
+					}
+				}
+			}
+
 			switch cleanStr(property) {
 			case "og:site_name":
 				doc.Preview.Name = content
@@ -348,7 +369,24 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 				}
 			}
 		}
-
+		/*
+		   处理这种情况:
+		       <meta http-equiv="REFRESH" content="0;url=dfshealth.html" />
+		*/
+		if hasHttpEquivRefresh && headPassed && scraper.MaxRedirect > 0 {
+			u, err := url.Parse(scraper.convertFullUrl(httpEquivRefreshUrl))
+			if err != nil {
+				return err
+			}
+			scraper.Url = u
+			scraper.EscapedFragmentUrl = nil
+			fdoc, err := scraper.getDocument()
+			if err != nil {
+				return err
+			}
+			*doc = *fdoc
+			return scraper.parseDocument(doc)
+		}
 		if hasCanonical && headPassed && scraper.MaxRedirect > 0 {
 			if !canonicalUrl.IsAbs() {
 				//absCanonical, err :=      url.Parse(fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, canonicalUrl.Path))
@@ -431,7 +469,8 @@ func (scraper *Scraper) convertFullUrl(u string) string {
 		return ""
 	}
 	if !urlParse.IsAbs() {
-		return fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, u)
+		hostUrl, _ := url.Parse(fmt.Sprintf("%s://%s", scraper.Url.Scheme, scraper.Url.Host))
+		return hostUrl.JoinPath(u).String()
 	}
 	return u
 }
