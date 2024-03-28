@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
@@ -132,9 +133,9 @@ func (scraper *Scraper) getDocument() (*Document, error) {
 		return nil, err
 	}
 	req.Header.Add("User-Agent", "GoScraper")
-	var httpclient = http.DefaultClient
+	var httpclient = &http.Client{Timeout: time.Second * 5} // 五秒超时
 	if scraper.Url.Scheme == "https" {
-		httpclient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+		httpclient = &http.Client{Timeout: time.Second * 5, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
 	}
 
 	resp, err := httpclient.Do(req)
