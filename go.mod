@@ -5,6 +5,7 @@ go 1.22.1
 require (
 	github.com/chromedp/cdproto v0.0.0-20240328024531-fe04f09ede24
 	github.com/chromedp/chromedp v0.9.5
+	github.com/go-resty/resty/v2 v2.12.0
 	github.com/songzhibin97/gkit v1.2.12
 	golang.org/x/net v0.22.0
 )

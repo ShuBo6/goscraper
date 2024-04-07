@@ -5,16 +5,15 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"github.com/go-resty/resty/v2"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/charset"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
-
-	"golang.org/x/net/html"
-	"golang.org/x/net/html/charset"
 )
 
 var (
@@ -33,7 +32,6 @@ type Document struct {
 	Body     []byte
 	Response *http.Response
 	Headers  map[string][]string
-	buff     bytes.Buffer
 	Preview  DocumentPreview
 }
 
@@ -135,37 +133,22 @@ func (scraper *Scraper) getDocument() (*Document, error) {
 		scraper.EscapedFragmentUrl = scraper.Url
 	}
 
-	req, err := http.NewRequest("GET", scraper.getUrl(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("User-Agent", "GoScraper")
-	var httpclient = &http.Client{Timeout: time.Second * 5} // 五秒超时
-	if scraper.Url.Scheme == "https" {
-		httpclient = &http.Client{Timeout: time.Second * 5, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
-	}
-
-	resp, err := httpclient.Do(req)
-	if resp != nil {
-		defer resp.Body.Close()
-	}
+	client := resty.New()
+	client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	resp, err := client.R().SetHeader("User-Agent", "GoScraper").Get(scraper.getUrl())
 	if err != nil {
 		return nil, err
 	}
 
-	if resp.Request.URL.String() != scraper.getUrl() {
+	if resp.RawResponse.Request.URL.String() != scraper.getUrl() {
 		scraper.EscapedFragmentUrl = nil
-		scraper.Url = resp.Request.URL
+		scraper.Url = resp.RawResponse.Request.URL
 	}
-	b, err := convertUTF8(resp.Body, resp.Header.Get("content-type"))
-	if err != nil {
-		return nil, err
-	}
+
 	doc := &Document{
-		buff:     b,
-		Headers:  resp.Header,
-		Body:     b.Bytes(),
-		Response: resp,
+		Headers:  resp.Header(),
+		Body:     resp.Body(),
+		Response: resp.RawResponse,
 		Preview: DocumentPreview{
 			jsFileMap:  make(map[string]*struct{}),
 			cssFileMap: make(map[string]*struct{}),
@@ -198,7 +181,7 @@ type scriptHtmlNode struct {
 }
 
 func (scraper *Scraper) parseDocument(doc *Document) error {
-	t := html.NewTokenizer(&doc.buff)
+	t := html.NewTokenizer(bytes.NewReader(doc.Body))
 	var ogImage bool
 	var headPassed bool
 	var hasFragment bool

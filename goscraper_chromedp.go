@@ -68,7 +68,6 @@ func (scraper *ScraperChromeDP) getDocument() (*Document, error) {
 	b := bytes.NewBuffer([]byte(scraper.ChromeHelper.ResponseBody))
 	scraper.ChromeHelper.Response.Header = scraper.ChromeHelper.Headers
 	doc := &Document{
-		buff:     *b,
 		Headers:  scraper.ChromeHelper.Headers,
 		Body:     b.Bytes(),
 		Response: scraper.ChromeHelper.Response,
