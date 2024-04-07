@@ -521,10 +521,10 @@ func (scraper *Scraper) convertFullUrl(u string) *UriFile {
 }
 
 type UrlSchemaFile struct {
-	dataType      string
-	fileExt       string
-	rawData       []byte
-	urlSchemaData []byte
+	DataType      string
+	FileExt       string
+	RawData       []byte
+	UrlSchemaData []byte
 }
 
 /*
@@ -556,7 +556,7 @@ func urlSchemaFileDecode(srcData []byte) (*UrlSchemaFile, error) {
 
 	var (
 		ans = &UrlSchemaFile{
-			urlSchemaData: srcData,
+			UrlSchemaData: srcData,
 		}
 		isBase64 bool
 		err      error
@@ -571,21 +571,21 @@ func urlSchemaFileDecode(srcData []byte) (*UrlSchemaFile, error) {
 			if len(tpslice) != 2 {
 				continue
 			}
-			ans.dataType = string(tpslice[0])
-			ans.fileExt = string(tpslice[1])
+			ans.DataType = string(tpslice[0])
+			ans.FileExt = string(tpslice[1])
 			if string(tpslice[1]) == "x-icon" {
-				ans.fileExt = "icon"
+				ans.FileExt = "icon"
 			}
 		}
 	}
 
 	if isBase64 {
-		ans.rawData, err = base64.StdEncoding.DecodeString(string(dataSlice[1]))
+		ans.RawData, err = base64.StdEncoding.DecodeString(string(dataSlice[1]))
 		if err != nil {
-			return nil, fmt.Errorf("base64解码失败, rawData:%s , err:%v", string(dataSlice[1]), err)
+			return nil, fmt.Errorf("base64解码失败, RawData:%s , err:%v", string(dataSlice[1]), err)
 		}
 	} else {
-		ans.rawData = dataSlice[1]
+		ans.RawData = dataSlice[1]
 	}
 	return ans, nil
 
