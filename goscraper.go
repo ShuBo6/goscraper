@@ -37,16 +37,22 @@ type Document struct {
 }
 
 type DocumentPreview struct {
-	Icon        string
+	Icon        *UriFile
 	Name        string
 	Title       string
 	Description string
-	Images      []string
-	JsFiles     []string
+	Images      []*UriFile
+	JsFiles     []*UriFile
 	jsFileMap   map[string]*struct{} // 去重用
-	CssFiles    []string
+	CssFiles    []*UriFile
 	cssFileMap  map[string]*struct{} // 去重用
 	Link        string
+}
+
+type UriFile struct {
+	Path   string
+	Data   []byte
+	Schema string // http , https, data
 }
 
 func Scrape(uri string, maxRedirect int) (*Document, error) {
@@ -200,13 +206,16 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 	var httpEquivRefreshUrl string
 
 	var canonicalUrl *url.URL
-	doc.Preview.Images = []string{}
+	doc.Preview.Images = []*UriFile{}
 	// saves previews' link in case that <link rel="canonical"> is found after <meta property="og:url">
 	link := doc.Preview.Link
 	// set default value to site name if <meta property="og:site_name"> not found
 	doc.Preview.Name = scraper.Url.Host
 	// set default icon to web root if <link rel="icon" href="/favicon.ico"> not found
-	doc.Preview.Icon = fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, "/favicon.ico")
+	doc.Preview.Icon = &UriFile{
+		Path:   fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, "/favicon.ico"),
+		Schema: scraper.Url.Scheme,
+	}
 	for {
 		tokenType := t.Next()
 		if tokenType == html.ErrorToken {
@@ -375,7 +384,11 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 		       <meta http-equiv="REFRESH" content="0;url=dfshealth.html" />
 		*/
 		if hasHttpEquivRefresh && headPassed && scraper.MaxRedirect > 0 {
-			u, err := url.Parse(scraper.convertFullUrl(httpEquivRefreshUrl))
+			httpEquivRefreshFullUrl := scraper.convertFullUrl(httpEquivRefreshUrl)
+			if httpEquivRefreshFullUrl == nil {
+				return nil
+			}
+			u, err := url.Parse(httpEquivRefreshFullUrl.Path)
 			if err != nil {
 				return err
 			}
@@ -463,15 +476,29 @@ func cleanStr(str string) string {
 	return strings.ToLower(strings.TrimSpace(str))
 }
 
-func (scraper *Scraper) convertFullUrl(u string) string {
+func (scraper *Scraper) convertFullUrl(u string) *UriFile {
+
 	urlParse, err := url.Parse(u)
 	if err != nil {
 		log.Println("[convertFullUrl]", err)
-		return ""
+		return nil
+	}
+	if urlParse.Scheme == "data" {
+		return &UriFile{
+			Data:   []byte(u),
+			Schema: urlParse.Scheme,
+		}
 	}
 	if !urlParse.IsAbs() {
 		hostUrl, _ := url.Parse(fmt.Sprintf("%s://%s", scraper.Url.Scheme, scraper.Url.Host))
-		return hostUrl.JoinPath(u).String()
+		return &UriFile{
+			Path:   hostUrl.JoinPath(u).String(),
+			Schema: urlParse.Scheme,
+		}
 	}
-	return u
+
+	return &UriFile{
+		Path:   u,
+		Schema: urlParse.Scheme,
+	}
 }

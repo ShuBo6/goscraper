@@ -8,6 +8,16 @@ import (
 	"unicode"
 )
 
+func TestGoScraperChromeDP(t *testing.T) {
+	s, err := ScrapeChromeDP("https://172.16.9.22:8999", 5)
+	debugPrint(s)
+	t.Error(err)
+	t.Log("-------------")
+	s, err = Scrape("https://172.16.9.22:8999", 5)
+	debugPrint(s)
+	t.Error(err)
+}
+
 func TestGoScraper(t *testing.T) {
 	s, err := Scrape("http://192.168.13.171:9870/", 5)
 	debugPrint(s)
@@ -43,8 +53,9 @@ func debugPrint(s *Document) {
 	fmt.Printf("Image:\t %v\n", s.Preview.Images)
 	fmt.Printf("CssFiles:\t %v\n", s.Preview.CssFiles)
 	fmt.Printf("JsFiles:\t %v\n", s.Preview.JsFiles)
+	fmt.Printf("Response:\t %v\n", s.Response)
 	fmt.Printf("Url :\t %s\n\n", s.Preview.Link)
-	fmt.Printf("Url :\t %s\n\n", s.Headers)
+	fmt.Printf("Headers :\t %s\n\n", s.Headers)
 }
 func ToDebugString(target interface{}) string {
 	targetValue := reflect.ValueOf(target)
