@@ -3,6 +3,7 @@ package goscraper
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -37,21 +38,21 @@ type Document struct {
 }
 
 type DocumentPreview struct {
-	Icon        *UriFile
+	Icon        UriFile
 	Name        string
 	Title       string
 	Description string
-	Images      []*UriFile
-	JsFiles     []*UriFile
+	Images      []UriFile
+	JsFiles     []UriFile
 	jsFileMap   map[string]*struct{} // 去重用
-	CssFiles    []*UriFile
+	CssFiles    []UriFile
 	cssFileMap  map[string]*struct{} // 去重用
 	Link        string
 }
 
 type UriFile struct {
 	Path   string
-	Data   []byte
+	Data   *UrlSchemaFile
 	Schema string // http , https, data
 }
 
@@ -206,13 +207,13 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 	var httpEquivRefreshUrl string
 
 	var canonicalUrl *url.URL
-	doc.Preview.Images = []*UriFile{}
+	doc.Preview.Images = []UriFile{}
 	// saves previews' link in case that <link rel="canonical"> is found after <meta property="og:url">
 	link := doc.Preview.Link
 	// set default value to site name if <meta property="og:site_name"> not found
 	doc.Preview.Name = scraper.Url.Host
 	// set default icon to web root if <link rel="icon" href="/favicon.ico"> not found
-	doc.Preview.Icon = &UriFile{
+	doc.Preview.Icon = UriFile{
 		Path:   fmt.Sprintf("%s://%s%s", scraper.Url.Scheme, scraper.Url.Host, "/favicon.ico"),
 		Schema: scraper.Url.Scheme,
 	}
@@ -263,13 +264,16 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 			}
 			// 处理icon
 			if strings.Contains(l.Rel, "icon") {
-				doc.Preview.Icon = scraper.convertFullUrl(l.Href)
+				doc.Preview.Icon = *scraper.convertFullUrl(l.Href)
 			}
 			// 处理css
 			if strings.Contains(l.Rel, "stylesheet") && doc.Preview.cssFileMap[l.Href] == nil {
 				doc.Preview.cssFileMap[l.Href] = &emptyStruct
 				//url.JoinPath(scraper.getUrl(), l.Href)
-				doc.Preview.CssFiles = append(doc.Preview.CssFiles, scraper.convertFullUrl(l.Href))
+				cssFiles := scraper.convertFullUrl(l.Href)
+				if cssFiles != nil {
+					doc.Preview.CssFiles = append(doc.Preview.CssFiles, *cssFiles)
+				}
 			}
 		case "script": // 仅匹配html中引入的js文件
 			var s scriptHtmlNode
@@ -290,7 +294,10 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 			}
 			if (strings.HasSuffix(s.Type, "javascript") || strings.HasSuffix(s.Src, "js")) && doc.Preview.jsFileMap[s.Src] == nil {
 				doc.Preview.jsFileMap[s.Src] = &emptyStruct
-				doc.Preview.JsFiles = append(doc.Preview.JsFiles, scraper.convertFullUrl(s.Src))
+				jsFiles := scraper.convertFullUrl(s.Src)
+				if jsFiles != nil {
+					doc.Preview.JsFiles = append(doc.Preview.JsFiles, *jsFiles)
+				}
 			}
 
 		case "meta":
@@ -348,8 +355,10 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 				//		return err
 				//	}
 				//}
-
-				doc.Preview.Images = append(doc.Preview.Images, scraper.convertFullUrl(content))
+				img := scraper.convertFullUrl(content)
+				if img != nil {
+					doc.Preview.Images = append(doc.Preview.Images, *img)
+				}
 
 			}
 
@@ -365,7 +374,10 @@ func (scraper *Scraper) parseDocument(doc *Document) error {
 		case "img":
 			for _, attr := range token.Attr {
 				if cleanStr(attr.Key) == "src" {
-					doc.Preview.Images = append(doc.Preview.Images, scraper.convertFullUrl(strings.TrimSpace(attr.Val)))
+					img := scraper.convertFullUrl(strings.TrimSpace(attr.Val))
+					if img != nil {
+						doc.Preview.Images = append(doc.Preview.Images, *img)
+					}
 					//imgUrl, err := url.Parse(attr.Val)
 					//if err != nil {
 					//	return err
@@ -484,8 +496,13 @@ func (scraper *Scraper) convertFullUrl(u string) *UriFile {
 		return nil
 	}
 	if urlParse.Scheme == "data" {
+		urlSchemaFile, decodeErr := urlSchemaFileDecode([]byte(u))
+		if decodeErr != nil {
+			log.Println("[convertFullUrl]", decodeErr)
+			return nil
+		}
 		return &UriFile{
-			Data:   []byte(u),
+			Data:   urlSchemaFile,
 			Schema: urlParse.Scheme,
 		}
 	}
@@ -501,4 +518,75 @@ func (scraper *Scraper) convertFullUrl(u string) *UriFile {
 		Path:   u,
 		Schema: urlParse.Scheme,
 	}
+}
+
+type UrlSchemaFile struct {
+	dataType      string
+	fileExt       string
+	rawData       []byte
+	urlSchemaData []byte
+}
+
+/*
+fileBase64Decode
+
+data:,文本数据
+data:text/plain,文本数据
+data:text/html,HTML代码
+data:text/html;base64,base64编码的HTML代码
+data:text/css,CSS代码
+data:text/css;base64,base64编码的CSS代码
+data:text/JavaScript,Javascript代码
+data:text/javascript;base64,base64编码的Javascript代码
+data:image/gif;base64,base64编码的gif图片数据
+data:image/png;base64,base64编码的png图片数据
+data:image/jpeg;base64,base64编码的jpeg图片数据
+data:image/x-icon;base64,base64编码的icon图片数据
+
+示例数据：data:image/png;base64,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
+*/
+func urlSchemaFileDecode(srcData []byte) (*UrlSchemaFile, error) {
+	if !bytes.HasPrefix(srcData, []byte("data:")) {
+		return nil, fmt.Errorf("数据格式错误: %s", string(srcData))
+	}
+	dataSlice := bytes.Split(srcData, []byte(`,`))
+	if len(dataSlice) != 2 {
+		return nil, fmt.Errorf("数据格式错误: %s", string(srcData))
+	}
+
+	var (
+		ans = &UrlSchemaFile{
+			urlSchemaData: srcData,
+		}
+		isBase64 bool
+		err      error
+	)
+
+	for _, item := range bytes.Split(dataSlice[0], []byte(";")) {
+		if string(item) == "base64" {
+			isBase64 = true
+		} else {
+			tp := bytes.TrimPrefix(item, []byte("data:"))
+			tpslice := bytes.Split(tp, []byte("/"))
+			if len(tpslice) != 2 {
+				continue
+			}
+			ans.dataType = string(tpslice[0])
+			ans.fileExt = string(tpslice[1])
+			if string(tpslice[1]) == "x-icon" {
+				ans.fileExt = "icon"
+			}
+		}
+	}
+
+	if isBase64 {
+		ans.rawData, err = base64.StdEncoding.DecodeString(string(dataSlice[1]))
+		if err != nil {
+			return nil, fmt.Errorf("base64解码失败, rawData:%s , err:%v", string(dataSlice[1]), err)
+		}
+	} else {
+		ans.rawData = dataSlice[1]
+	}
+	return ans, nil
+
 }
