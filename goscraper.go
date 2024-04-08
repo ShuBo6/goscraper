@@ -493,7 +493,7 @@ func (scraper *Scraper) convertFullUrl(u string) *UriFile {
 		hostUrl, _ := url.Parse(fmt.Sprintf("%s://%s", scraper.Url.Scheme, scraper.Url.Host))
 		return &UriFile{
 			Path:   hostUrl.JoinPath(u).String(),
-			Schema: urlParse.Scheme,
+			Schema: hostUrl.Scheme,
 		}
 	}
 
